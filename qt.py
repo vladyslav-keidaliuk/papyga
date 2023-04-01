@@ -1,7 +1,7 @@
 import random
 
 
-def GetTotemAnimal():
+def get_totem_animal():
     animals = ['Ведмідь', 'Слон', 'Бобер',
                'Орел', 'Коник', 'Бик',
                'Жаба', 'Собака', "Хом'як",
@@ -15,7 +15,7 @@ def GetTotemAnimal():
     return text
 
 
-def GetTotemAnimalWithSticker(animal):
+def get_sticker_for_totem(animal):
     animals_dict = {
         'Ведмідь': '\U0001F43B',
         'Слон': '\U0001F418',
@@ -45,7 +45,7 @@ def GetTotemAnimalWithSticker(animal):
     return animal
 
 
-def GetQuote():
+def get_quote():
     for_students_quotes = [
         '“There are no shortcuts to any place worth going.” – Beverly Sills',
         '“Be a student as long as you still have something to learn, '
