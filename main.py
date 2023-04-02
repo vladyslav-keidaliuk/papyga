@@ -9,117 +9,43 @@ import telebot
 
 import config
 import schedule_text
-from config import DB
-from phrases import ListsPhrases, MountainPhrases, MinePhrases, GetTextWithLink
-from qt import GetQuote, GetTotemAnimalWithSticker, GetTotemAnimal
+from config import db_connection
+from phrases import mountain_phrases, mine_phrases, get_text_with_link
+from what_pair_progress import what_pair
+from qt import get_quote, get_sticker_for_totem, get_totem_animal
 
 message_count = 0
+to_unpin_message_id = None
 
 GROUP_ID = config.GROUP_ID
 bot = telebot.TeleBot(config.TOKEN)
 
-# Функція, що вираховує скільки % пройдено, та в залежності від % повертає рандомну фразу з відповідного списку
-def WhatProgressInProcent(start_time, target_time, num_pair):
-    start_datetime = datetime.datetime.combine(datetime.date.today(), start_time)
-    target_datetime = datetime.datetime.combine(datetime.date.today(), target_time)
-
-    if target_time < start_time:
-        target_datetime += datetime.timedelta(days=1)
-
-    time_diff = target_datetime - start_datetime
-    total_seconds = time_diff.total_seconds()
-    elapsed_seconds = (datetime.datetime.now() - start_datetime).total_seconds()
-    percentage_elapsed = int(elapsed_seconds / total_seconds * 100)
-
-    result = "Пройдено " + str(percentage_elapsed) + "% " + str(num_pair) + "-ї пари.\n"
-    if percentage_elapsed < 20:
-        result = result + ListsPhrases(20)
-        return result
-    elif percentage_elapsed < 25:
-        result = result + ListsPhrases(2025)
-        return result
-    elif percentage_elapsed < 50:
-        result = result + ListsPhrases(2550)
-        return result
-    elif percentage_elapsed < 80:
-        result = result + ListsPhrases(5080)
-        return result
-    elif percentage_elapsed < 91:
-        result = result + ListsPhrases(8090)
-        return result
-    elif percentage_elapsed < 100:
-        result = result + ListsPhrases(90100)
-        return result
-    else:
-        result = "XMMMM"
-        return result
-
-
-def WhatPair(message):
-    pair_1_start = datetime.time(8 - 3, 0, 0)
-    pair_1_end = datetime.time(9 - 3, 35, 0)
-
-    pair_2_start = datetime.time(9 - 3, 50, 0)
-    pair_2_end = datetime.time(11 - 3, 25, 0)
-
-    pair_3_start = datetime.time(11 - 3, 40, 0)
-    pair_3_end = datetime.time(13 - 3, 15, 0)
-
-    pair_4_start = datetime.time(13 - 3, 30, 0)
-    pair_4_end = datetime.time(15 - 3, 5, 0)
-
-    pair_5_start = datetime.time(15 - 3, 20, 0)
-    pair_5_end = datetime.time(16 - 3, 55, 0)
-
-    now = datetime.datetime.now().time()
-
-    if pair_1_start <= now <= pair_1_end:
-        text = WhatProgressInProcent(pair_1_start, pair_1_end, 1)
-        bot.send_message(message.chat.id, text)
-    elif pair_2_start <= now <= pair_2_end:
-        text = WhatProgressInProcent(pair_2_start, pair_2_end, 2)
-        bot.send_message(message.chat.id, text)
-    elif pair_3_start <= now <= pair_3_end:
-        text = WhatProgressInProcent(pair_3_start, pair_3_end, 3)
-        bot.send_message(message.chat.id, text)
-    elif pair_4_start <= now <= pair_4_end:
-        text = WhatProgressInProcent(pair_4_start, pair_4_end, 4)
-        bot.send_message(message.chat.id, text)
-    elif pair_5_start <= now <= pair_5_end:
-        text = WhatProgressInProcent(pair_5_start, pair_5_end, 5)
-        bot.send_message(message.chat.id, text)
-    else:
-        bot.send_message(message.chat.id, "Зараз нема жодної пари, відпочиваємо 😴")
-
-
 @bot.message_handler(commands=['tleft'])
 def time_left(message):
-    today = datetime.date.today()
-    today = today.strftime('%A')
+    today = (datetime.date.today()).strftime('%A')
     if today == "Saturday":
         bot.send_message(message.chat.id, "Сьогодні субота, чого ти мене питаєш за пари, йди роби лаби 👮‍♂️")
     elif today == "Sunday":
         bot.send_message(message.chat.id, "Сьогодні неділя, чого ти мене питаєш за пари, йди роби лаби 👮‍♂️")
     else:
-        WhatPair(message)
+        bot.send_message(message.chat.id,what_pair())
 
 
-def CheckWeek():
-    Time = time.localtime()
-    my_date = datetime.date(Time.tm_year, Time.tm_mon, Time.tm_mday)
-
+def check_week():
+    my_date = datetime.date(time.localtime().tm_year, time.localtime().tm_mon, time.localtime().tm_mday)
     year, week_num, day_of_week = my_date.isocalendar()
     week_shedule = week_num - 9
 
     if week_shedule % 2 == 0:
-        # print("Парна неділя")
         schedule.clear('unpair')
+        schedule.every().monday.at("04:40").do(send_message_to_group,
+            f"Нагадування⚠:\nЗараз парний тиждень ({week_shedule})").tag('pair')
         schedule.every().monday.at("04:50").do(send_message_to_group_and_pin, schedule_text.monday_08_00).tag(
             'pair')  # 2-14
         schedule.every().monday.at("10:20").do(send_message_to_group_and_pin, schedule_text.monday_13_30).tag(
             'pair')  # 2-14
-        schedule.every().monday.at("12:10").do(UnpinMessage).tag('pair')  # 2-14, unpin
-        schedule.every().wednesday.at("08:30").do(UnpinMessage).tag('pair')  # 2-14, unpin
+        schedule.every().monday.at("12:10").do(unpin_message).tag('pair')  # 2-14, unpin
+        schedule.every().wednesday.at("08:30").do(unpin_message).tag('pair')  # 2-14, unpin
         schedule.every().thursday.at("08:30").do(send_message_to_group_and_pin, schedule_text.thursday_11_40_2).tag(
             'pair')  # 2-14
         schedule.every().thursday.at("12:10").do(send_message_to_group_and_pin, schedule_text.thursday_15_20_2).tag(
@@ -128,19 +54,19 @@ def CheckWeek():
 
     elif week_shedule % 2 != 0:
         schedule.clear('pair')
-        schedule.every().monday.at("10:20").do(UnpinMessage).tag('unpair')  # 1-15, unpin
+        schedule.every().monday.at("04:40").do(send_message_to_group,
+            f"Нагадування⚠:\nЗараз НЕпарний тиждень ({week_shedule})").tag('unpair')
+        schedule.every().monday.at("10:20").do(unpin_message).tag('unpair')  # 1-15, unpin
         schedule.every().wednesday.at("08:30").do(send_message_to_group_and_pin, schedule_text.wednesday_11_40).tag(
             'unpair')  # 1-15
         schedule.every().wednesday.at("10:20").do(send_message_to_group_and_pin, schedule_text.wednesday_13_30).tag(
             'unpair')  # 1-15
-        schedule.every().wednesday.at("12:10").do(UnpinMessage).tag('unpair')  # 1-15, unpin
+        schedule.every().wednesday.at("12:10").do(unpin_message).tag('unpair')  # 1-15, unpin
         schedule.every().thursday.at("08:30").do(send_message_to_group_and_pin, schedule_text.thursday_11_40_1).tag(
             'unpair')  # 1-15
         schedule.every().thursday.at("12:10").do(send_message_to_group_and_pin, schedule_text.thursday_15_20_1).tag(
             'unpair')
 
-
-to_unpin_message_id = None
 
 
 def send_message_to_group(message):
@@ -148,14 +74,14 @@ def send_message_to_group(message):
 
 
 def send_message_to_group_and_pin(message):
-    UnpinMessage()
-    sent_message = bot.send_message(GROUP_ID, message)
-    bot.pin_chat_message(GROUP_ID, sent_message.message_id)
+    unpin_message()
+    last_message = bot.send_message(GROUP_ID, message)
+    bot.pin_chat_message(GROUP_ID, last_message.message_id)
     global to_unpin_message_id
-    to_unpin_message_id = sent_message.message_id
+    to_unpin_message_id = last_message.message_id
 
 
-def UnpinMessage():
+def unpin_message():
     if to_unpin_message_id is None:
         pass
     else:
@@ -180,149 +106,133 @@ schedule.every().tuesday.at("04:50").do(send_message_to_group_and_pin, schedule_
 # schedule.every().tuesday.at("07:40").do(send_message_to_group_and_pin, tuesday_09_50)# vubor, не буде пари
 schedule.every().tuesday.at("08:30").do(send_message_to_group_and_pin, schedule_text.tuesday_11_40)
 schedule.every().tuesday.at("10:20").do(send_message_to_group_and_pin, schedule_text.tuesday_13_30)
-schedule.every().tuesday.at("10:10").do(UnpinMessage)  # unpin
+schedule.every().tuesday.at("10:40").do(unpin_message)  # unpin
 
 # Wednesday
-# schedule.every().wednesday.at("05:50").do(send_message_to_group, wednesday_08_00)# vubor, не буде пари
 schedule.every().wednesday.at("06:40").do(send_message_to_group_and_pin, schedule_text.wednesday_09_50)
-# wed_3_1 = schedule.every().wednesday.at("11:30").do(send_message_to_group_and_pin, wednesday_11_40) #1-15
-# wed_4_1 =schedule.every().wednesday.at("13:20").do(send_message_to_group_and_pin, wednesday_13_30) #1-15
 
 # Thursday
 schedule.every().thursday.at("04:50").do(send_message_to_group_and_pin, schedule_text.thursday_08_00)
 schedule.every().thursday.at("06:40").do(send_message_to_group_and_pin, schedule_text.thursday_09_50)
-# thu_3_1 = schedule.every().thursday.at("11:30").do(send_message_to_group_and_pin, thursday_11_40_1)# 1-15
-# thu_3_2 = schedule.every().thursday.at("11:30").do(send_message_to_group_and_pin, thursday_11_40_2)# 2-14
-# schedule.every().thursday.at("11:20").do(send_message_to_group_and_pin, thursday_13_30)
-schedule.every().thursday.at("14:00").do(UnpinMessage)  # unpin
+schedule.every().thursday.at("14:00").do(unpin_message)  # unpin
 
 # Friday
 schedule.every().friday.at("04:50").do(send_message_to_group_and_pin, schedule_text.friday_08_00)
 schedule.every().friday.at("06:40").do(send_message_to_group_and_pin, schedule_text.friday_09_50)
-schedule.every().friday.at("08:30").do(UnpinMessage)  # unpin
-# schedule.every().friday.at("09:30").do(send_message_to_group_and_pin, friday_11_40)
-# schedule.every().friday.at("11:20").do(send_message_to_group_and_pin, friday_13_30)
+schedule.every().friday.at("08:30").do(unpin_message)  # unpin
 
 
 ########################################################################################
-schedule.every().day.at("05:00").do(CheckWeek)
-CheckWeek()
+schedule.every().day.at("04:00").do(check_week)
+check_week()
 
 
 # =============================================================================================================
 
 
-def DBConnect():
+def db_connect():
     try:
-        mydb = DB()
+        mydb = db_connection()
         mycursor = mydb.cursor(buffered=True)
         return [mydb, mycursor]
     except:
-        send_message_to_group("Упс, щось пішло не так...")
+        send_message_to_group("Упс, щось пішло не так...\n"
+                              "(З'єднання з БД)")
 
 
-def CheckTimer(message, user_id, size, stop_timer, what_timer):
+def check_timer(message, user_id, size, stop_timer, what_timer):
     try:
         now = datetime.datetime.now()
         if now < stop_timer:
-
-            stop_timer_str = str(stop_timer + timedelta(hours=3))
-            stop_timer_str = stop_timer_str[:19]
-            text = GetTextWithLink(message) + ", ти рано зайшов, зможеш спробувати знов після " + stop_timer_str
+            stop_timer_str = str(stop_timer + timedelta(hours=3))[:19]
+            # stop_timer_str = stop_timer_str[:19]
+            text = get_text_with_link(message) + \
+                ", ти рано зайшов(-ла), зможеш спробувати знов після " + stop_timer_str
             return text
         elif now >= stop_timer:
             if what_timer == 0:
-                NewTryQT(user_id)
-                RepeatTimer(user_id, what_timer)
+                new_try_qt(user_id)
+                repeat_timer(user_id, what_timer)
             if what_timer == 1:
-                NewTry(user_id, size)
-                RepeatTimer(user_id, what_timer)
+                new_try_bayraktar(user_id, size)
+                repeat_timer(user_id, what_timer)
                 return 10
             if what_timer == 2:
-                NewTryMountain(user_id, size)
-                RepeatTimer(user_id, what_timer)
+                new_try_mountain(user_id, size)
+                repeat_timer(user_id, what_timer)
                 return 20
-
     except:
-        send_message_to_group("Упс, щось пішло не так...")
+        send_message_to_group("Упс, щось пішло не так...\n"
+                              "(Перевірка таймеру)")
 
 
-def NewTryMountain(user_id, passmountain):
+def new_try_mountain(user_id, passmountain):
     try:
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+        res = db_connect()
+        cursor = res[1]
+        db = res[0]
 
         new_passmountain = random.randint(0, 10)
         status = random.randint(0, 100)
 
         if 30 >= status >= 0:
-            # print("Status: 0 ≤ х ≤ 46:")
             new_passmountain = passmountain + new_passmountain
         if 31 <= status <= 40:
-            # print("Status: 47 ≤ х ≤ 52 ")
             new_passmountain = passmountain
         if 41 <= status <= 99:
-            # print("Status: 53 ≤ х ≤ 99 ")
             # if passmountain < new_passmountain:
             #     new_passmountain = 0
             # if passmountain >= new_passmountain:
             new_passmountain = passmountain - new_passmountain
         if status == 100:
-            # print("Рівно 100:")
             new_passmountain = 0
 
         query = "UPDATE Users SET passmountain = %s WHERE user_id = %s"
         values = (str(new_passmountain), user_id)
 
-        mycursor.execute(query, values)
-        mydb.commit()
+        cursor.execute(query, values)
+        db.commit()
 
-        # Print a message indicating that the row was updated
-        if mycursor.rowcount > 0:
-            pass
-        else:
-            pass
-
-        mycursor.close()
-        mydb.close()
+        cursor.close()
+        db.close()
     except:
-        send_message_to_group("Упс, щось пішло не так...")
+        send_message_to_group("Упс, щось пішло не так...\n"
+                              "(Нова спроба у скелелазах)")
 
 
-def NewTryQT(user_id):
+def new_try_qt(user_id):
     try:
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+        res = db_connect()
+        cursor = res[1]
+        db = res[0]
 
-        new_quote = GetQuote()
-        new_totem = GetTotemAnimal()
+        new_quote = get_quote()
+        new_totem = get_totem_animal()
 
         query = "UPDATE Users SET totem = %s WHERE user_id = %s"
         values = (new_totem, user_id)
 
-        mycursor.execute(query, values)
-        mydb.commit()
+        cursor.execute(query, values)
+        db.commit()
 
-        if mycursor.rowcount > 0:
-            # print("Row updated")
-            text = f"Твоя тотемна тварина на наступні 12 годин : {GetTotemAnimalWithSticker(new_totem)}\n" \
+        if cursor.rowcount > 0:
+            text = f"Твоя тотемна тварина на наступні 12 годин : {get_sticker_for_totem(new_totem)}\n" \
                    f"Твоя цитата дня : {new_quote}"
             send_message_to_group(text)
         else:
             pass
-        mycursor.close()
-        mydb.close()
+        cursor.close()
+        db.close()
     except:
-        send_message_to_group("Упс, щось пішло не так...")
+        send_message_to_group("Упс, щось пішло не так...\n"
+                              "(Нова спроба у цитаті та тотемі)")
 
 
-def NewTry(user_id, size):
+def new_try_bayraktar(user_id, size):
     try:
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+        res = db_connect()
+        cursor = res[1]
+        db = res[0]
 
         new_size = random.randint(0, 17)
         status = random.randint(0, 100)
@@ -342,28 +252,21 @@ def NewTry(user_id, size):
         query = "UPDATE Users SET size = %s WHERE user_id = %s"
         values = (str(new_size), user_id)
 
-        mycursor.execute(query, values)
-        mydb.commit()
+        cursor.execute(query, values)
+        db.commit()
 
-        # Print a message indicating that the row was updated
-        if mycursor.rowcount > 0:
-            # print("Row updated")
-            pass
-        else:
-            # print("Row not found")
-            pass
-
-        mycursor.close()
-        mydb.close()
+        cursor.close()
+        db.close()
     except:
-        send_message_to_group("Упс, щось пішло не так...")
+        send_message_to_group("Упс, щось пішло не так...\n"
+                              "(Нова спроба у байрактарах)")
 
 
-def RepeatTimer(user_id, what_timer):
+def repeat_timer(user_id, what_timer):
     try:
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+        res = db_connect()
+        cursor = res[1]
+        db = res[0]
 
         now = datetime.datetime.now()
         date_time_stop_str = str(now + timedelta(hours=12))
@@ -371,50 +274,51 @@ def RepeatTimer(user_id, what_timer):
         if what_timer == 0:
             query = "UPDATE Users SET stop_timer_qt = %s WHERE user_id = %s"
             values = (date_time_stop_str, user_id)
-            mycursor.execute(query, values)
-            mydb.commit()
+            cursor.execute(query, values)
+            db.commit()
 
-        if what_timer == 1:
+        elif what_timer == 1:
             query = "UPDATE Users SET stop_timer = %s WHERE user_id = %s"
             values = (date_time_stop_str, user_id)
-            mycursor.execute(query, values)
-            mydb.commit()
-        if what_timer == 2:
+            cursor.execute(query, values)
+            db.commit()
+
+        elif what_timer == 2:
             query = "UPDATE Users SET stop_timer_mountain = %s WHERE user_id = %s"
             values = (date_time_stop_str, user_id)
-            mycursor.execute(query, values)
-            mydb.commit()
+            cursor.execute(query, values)
+            db.commit()
 
-        mycursor.close()
-        mydb.close()
+        cursor.close()
+        db.close()
     except:
-        send_message_to_group("Упс, щось пішло не так...")
+        send_message_to_group("Упс, щось пішло не так...\n"
+                              "(Оновлення таймеру)")
 
 
-def GetDataFromTable(user_id):
+def get_data_from_table(user_id):
     try:
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+        res = db_connect()
+        cursor = res[1]
 
         query = "SELECT * FROM Users WHERE user_id = %s"
-        mycursor.execute(query, (user_id,))
-        row = mycursor.fetchone()
+        cursor.execute(query, (user_id,))
+        row = cursor.fetchone()
 
         if row:
-            # Тут start_timer_qt и stop_timer уже по типу данных - даты, а не строки
             user_id, size, start_timer_qt, stop_timer, totem, passmountain, stop_timer_mountain = row
             data_arr = [user_id, size, start_timer_qt, stop_timer, totem, passmountain, stop_timer_mountain]
             return data_arr
         else:
             return 0
     except:
-        send_message_to_group("Упс, щось пішло не так...")
+        send_message_to_group("Упс, щось пішло не так...\n"
+                              "Отримання даних з таблиці")
 
 
-def GetTextWithLinkForTop5(id):
+def get_text_with_link_for_top5(user_id):
     try:
-        chat_member = bot.get_chat_member(chat_id=GROUP_ID, user_id=id)
+        chat_member = bot.get_chat_member(chat_id=GROUP_ID, user_id=user_id)
         username = chat_member.user.username
         first_name = chat_member.user.first_name
         last_name = chat_member.user.last_name
@@ -441,359 +345,364 @@ def GetTextWithLinkForTop5(id):
 
 @bot.message_handler(commands=['whoi'])
 def whoi(message):
-    try:
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+    if message.chat.id == GROUP_ID:
+        try:
+            res = db_connect()
+            cursor = res[1]
+            db = res[0]
 
-        data_arr = GetDataFromTable(message.from_user.id)
-        if data_arr == 0:
+            data_arr = get_data_from_table(message.from_user.id)
+            if data_arr == 0:
 
-            text = f'{GetTextWithLink(message)}, я Папуга 2.0, дивлюсь ти вперше тут.\n' \
-                   f'Тут ти можеш кожні 12 годин отримувати цитату дня и дізнаватись, ' \
-                   f'яка твоя тотемна тварина на наступні 12 годин.'
-            send_message_to_group(text)
-            try:
-                new_totem = GetTotemAnimal()
-                new_quote = GetQuote()
-                now = datetime.datetime.now()
-                date_time_stop_str = str(now + timedelta(hours=12))
-
-                text = f"{GetTextWithLink(message)}, " \
-                       f"твоя тотемна тварина на наступні 12 годин : {GetTotemAnimalWithSticker(new_totem)}\n" \
-                       f"Твоя цитата дня : {new_quote}"
+                text = f'{get_text_with_link(message)}, я Папуга 2.0, дивлюсь ти вперше тут.\n' \
+                       f'Тут ти можеш кожні 12 годин отримувати цитату дня и дізнаватись, ' \
+                       f'яка твоя тотемна тварина на наступні 12 годин.'
                 send_message_to_group(text)
+                try:
+                    new_totem = get_totem_animal()
+                    new_quote = get_quote()
+                    now = datetime.datetime.now()
+                    date_time_stop_str = str(now + timedelta(hours=12))
 
-                sql = "INSERT INTO Users (user_id,stop_timer_qt,totem) VALUES (%s,%s,%s)"
-                val = (message.from_user.id, date_time_stop_str, new_totem)
-                mycursor.execute(sql, val)
-                mydb.commit()
-                mycursor.close()
-                mydb.close()
-            except:
-                # print("Ты уже есть в базе")
-                pass
+                    text = f"{get_text_with_link(message)}, " \
+                           f"твоя тотемна тварина на наступні 12 годин : {get_sticker_for_totem(new_totem)}\n" \
+                           f"Твоя цитата дня : {new_quote}"
+                    send_message_to_group(text)
 
-            # NewTryQT(message.from_user.id)
-        elif data_arr[4] == None:
-            text = f'{GetTextWithLink(message)}, я Папуга 2.0, дивлюсь ти вперше тут.\n' \
-                   f'Тут ти можеш кожні 12 годин отримувати цитату дня и дізнаватись, ' \
-                   f'яка твоя тотемна тварина на наступні 12 годин.'
-            send_message_to_group(text)
-            try:
-                new_totem = GetTotemAnimal()
-                new_quote = GetQuote()
-                now = datetime.datetime.now()
-                date_time_stop_str = str(now + timedelta(hours=12))
+                    sql = "INSERT INTO Users (user_id,stop_timer_qt,totem) VALUES (%s,%s,%s)"
+                    val = (message.from_user.id, date_time_stop_str, new_totem)
+                    cursor.execute(sql, val)
+                    db.commit()
+                    cursor.close()
+                    db.close()
+                except:
+                    pass
 
-                text = f"{GetTextWithLink(message)}, " \
-                       f"твоя тотемна тварина на наступні 12 годин : {GetTotemAnimalWithSticker(new_totem)}\n" \
-                       f"Твоя цитата дня : {new_quote}"
+            elif data_arr[4] == None:
+                text = f'{get_text_with_link(message)}, я Папуга 2.0, дивлюсь ти вперше тут.\n' \
+                       f'Тут ти можеш кожні 12 годин отримувати цитату дня и дізнаватись, ' \
+                       f'яка твоя тотемна тварина на наступні 12 годин.'
                 send_message_to_group(text)
+                try:
+                    new_totem = get_totem_animal()
+                    new_quote = get_quote()
+                    now = datetime.datetime.now()
+                    date_time_stop_str = str(now + timedelta(hours=12))
 
-                query = "UPDATE Users SET stop_timer_qt= %s, totem = %s WHERE user_id = %s"
-                values = (date_time_stop_str, new_totem, message.from_user.id)
-                mycursor.execute(query, values)
-                mydb.commit()
-                mycursor.close()
-                mydb.close()
-            except:
-                # print("Ты уже есть в базе")
-                pass
-        else:
-            data_arr = GetDataFromTable(message.from_user.id)
-            size = data_arr[1]
-            stop_timer_qt = data_arr[2]
-            totem = data_arr[4]
-            passmountain = data_arr[5]
+                    text = f"{get_text_with_link(message)}, " \
+                           f"твоя тотемна тварина на наступні 12 годин : {get_sticker_for_totem(new_totem)}\n" \
+                           f"Твоя цитата дня : {new_quote}"
+                    send_message_to_group(text)
 
-            text_from_timer = CheckTimer(message, message.from_user.id, size, stop_timer_qt, 0)
-
-            data_arr = GetDataFromTable(message.from_user.id)
-            size = data_arr[1]
-            stop_timer_qt = data_arr[2]
-            totem = data_arr[4]
-
-            if text_from_timer is None:
-                pass
-                mycursor.close()
-                mydb.close()
-
+                    query = "UPDATE Users SET stop_timer_qt= %s, totem = %s WHERE user_id = %s"
+                    values = (date_time_stop_str, new_totem, message.from_user.id)
+                    cursor.execute(query, values)
+                    db.commit()
+                    cursor.close()
+                    db.close()
+                except:
+                    pass
             else:
+                data_arr = get_data_from_table(message.from_user.id)
+                size = data_arr[1]
+                stop_timer_qt = data_arr[2]
+                totem = data_arr[4]
+                passmountain = data_arr[5]
 
-                if passmountain >= 0:
+                text_from_timer = check_timer(message, message.from_user.id, size, stop_timer_qt, 0)
 
-                    text = 'ТВІЙ ПРОФІЛЬ\n' \
-                           f'||\U000026F0СКЕЛЕЛАЗ||\n' \
-                           f'ФІО : {GetTextWithLink(message)}\n' \
-                           f'Розмір причандала : {size} cм\n' \
-                           f'Тотемна тварина : {GetTotemAnimalWithSticker(totem)}\n' \
-                           f'Пройдено гори\U000026F0 : {passmountain} м\n' \
-                           f'\nP.S. : {text_from_timer}'
-                elif passmountain < 0:
-                    text = 'ТВІЙ ПРОФІЛЬ\n' \
-                           '||\U000026CFШАХТАР||\n' \
-                           f'ФІО : {GetTextWithLink(message)}\n' \
-                           f'Розмір причандала : {size} cм\n' \
-                           f'Тотемна тварина : {GetTotemAnimalWithSticker(totem)}\n' \
-                           f'Пройдено шахти\U000026CF : {abs(passmountain)} м\n' \
-                           f'\nP.S. : {text_from_timer}'
+                data_arr = get_data_from_table(message.from_user.id)
+                size = data_arr[1]
+                stop_timer_qt = data_arr[2]
+                totem = data_arr[4]
 
-                send_message_to_group(text)
-                mycursor.close()
-                mydb.close()
-    except:
-        send_message_to_group("Упс, щось пішло не так...")
+                if text_from_timer is None:
+                    pass
+                    cursor.close()
+                    db.close()
+
+                else:
+
+                    if passmountain >= 0:
+
+                        text = 'ТВІЙ ПРОФІЛЬ\n' \
+                               f'||\U000026F0СКЕЛЕЛАЗ||\n' \
+                               f'ФІО : {get_text_with_link(message)}\n' \
+                               f'Розмір причандала : {size} cм\n' \
+                               f'Тотемна тварина : {get_sticker_for_totem(totem)}\n' \
+                               f'Пройдено гори\U000026F0 : {passmountain} м\n' \
+                               f'\nP.S. : {text_from_timer}'
+                    elif passmountain < 0:
+                        text = 'ТВІЙ ПРОФІЛЬ\n' \
+                               '||\U000026CFШАХТАР||\n' \
+                               f'ФІО : {get_text_with_link(message)}\n' \
+                               f'Розмір причандала : {size} cм\n' \
+                               f'Тотемна тварина : {get_sticker_for_totem(totem)}\n' \
+                               f'Пройдено шахти\U000026CF : {abs(passmountain)} м\n' \
+                               f'\nP.S. : {text_from_timer}'
+
+                    send_message_to_group(text)
+                    cursor.close()
+                    db.close()
+        except:
+            send_message_to_group("Упс, щось пішло не так...")
+    else:
+        bot.send_message(message.chat.id, "Ця команда працює лише у груповому чаті.")
 
 
 @bot.message_handler(commands=['upgrade'])
 def upgrade(message):
-    try:
-        user_id = message.from_user.id
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+    if message.chat.id == GROUP_ID:
+        try:
+            user_id = message.from_user.id
+            res = db_connect()
+            cursor = res[1]
+            db = res[0]
 
-        query = "SELECT * FROM Users WHERE user_id = %s"
-        mycursor.execute(query, (user_id,))
-        row = mycursor.fetchone()
-        if row:
-            # Тут stop_timer_qt и stop_timer уже по типу данных - даты, а не строки
-            user_id, size_last, start_timer_last, stop_timer_last, totem, passmountain, stop_timer_mountain = row
+            query = "SELECT * FROM Users WHERE user_id = %s"
+            cursor.execute(query, (user_id,))
+            row = cursor.fetchone()
+            if row:
+                # Тут stop_timer_qt и stop_timer уже по типу данных - даты, а не строки
+                user_id, size_last, start_timer_last, stop_timer_last, totem, passmountain, stop_timer_mountain = row
 
-            if size_last == None:
-                now = datetime.datetime.now()
+                if size_last == None:
+                    now = datetime.datetime.now()
 
-                size = str(random.randint(1, 12))
+                    size = str(random.randint(1, 17))
 
-                date_time_stop = str(now + timedelta(hours=12))
-                date_time_stop = date_time_stop[:19]
+                    date_time_stop = str(now + timedelta(hours=12))[:19]
+                    # date_time_stop = date_time_stop[:19]
 
-                send_message_to_group(
-                    "Привіт, " + GetTextWithLink(message) +
-                    ", я Папуга 2.0, ти тільки-но зайшов(-ла) у режим, "
-                    "де справжні хлопці та дівчата міряються своєю зброєю."
-                )
+                    send_message_to_group(
+                        "Привіт, " + get_text_with_link(message) +
+                        ", я Папуга 2.0, ти тільки-но зайшов(-ла) у режим, "
+                        "де справжні хлопці та дівчата міряються своєю зброєю."
+                    )
 
-                send_message_to_group(GetTextWithLink(message) + ", твій байрактар : " + size + " см")
-                try:
-                    query = "UPDATE Users SET size = %s, stop_timer = %s WHERE user_id = %s"
-                    values = (size, date_time_stop, user_id)
-                    mycursor.execute(query, values)
+                    send_message_to_group(get_text_with_link(message) + ", твій байрактар : " + size + " см")
+                    try:
+                        query = "UPDATE Users SET size = %s, stop_timer = %s WHERE user_id = %s"
+                        values = (size, date_time_stop, user_id)
+                        cursor.execute(query, values)
 
-                    mydb.commit()
-                except:
-                    # print("Ты уже есть в базе")
-                    pass
+                        db.commit()
+                    except:
+                        pass
+                else:
+                    status = check_timer(message, user_id, size_last, stop_timer_last, 1)
+
+                    data_arr = get_data_from_table(user_id)
+                    size = data_arr[1]
+
+                    if len(str(status)) > 15:
+                        send_message_to_group(status)
+
+                    if status == 10:
+                        if size > size_last:
+                            text = get_text_with_link(message) + \
+                                   ', ти сьогодні добряче попрацював руками та отримав ' \
+                                   'свої ' + str(size - size_last) + ' cм. ' \
+                                                                     'Тепер твій байрактар ' + str(
+                                size) + ' см. Продовжуй сумлінно працювати!'
+                            send_message_to_group(text)
+                        elif size < size_last:
+                            text = get_text_with_link(message) + ', сьогодні папуга віддзьобала ' + str(
+                                size_last - size) + ' cм твого ' \
+                                                    'причандала. ' \
+                                                    'Тепер твій байрактар ' + str(
+                                size) + ' см. ЗСУ помстить найближчим часом!'
+                            send_message_to_group(text)
+                        elif size == size_last:
+                            text = get_text_with_link(message) + ', твій байрактар мов камінь. Не зрушився ні на см і ' \
+                                                              'складає ' + str(size) + ' см.'
+                            send_message_to_group(text)
+
             else:
-                status = CheckTimer(message, user_id, size_last, stop_timer_last, 1)
+                now = datetime.datetime.now()
+                size = str(random.randint(1, 17))
+                date_time_stop = str(now + timedelta(hours=12))[:19]
 
-                data_arr = GetDataFromTable(user_id)
-                size = data_arr[1]
-                stop_timer_qt = data_arr[2]
-                stop_timer = data_arr[3]
-                totem = data_arr[4]
+                send_message_to_group("Привіт, " + get_text_with_link(message) +
+                                      ", ти тільки-но зайшов(-ла) у режим, "
+                                      "де справжні хлопці та дівцата міряються своєю зброєю."
+                                      )
 
-                if len(str(status)) > 15:
-                    send_message_to_group(status)
+                send_message_to_group(get_text_with_link(message) + ", твій байрактар : " + size + " см")
+                try:
+                    sql = "INSERT INTO Users (user_id,size,stop_timer) VALUES (%s, %s,%s)"
+                    val = (user_id, size, date_time_stop)
+                    cursor.execute(sql, val)
 
-                if status == 10:
-                    if size > size_last:
-                        text = GetTextWithLink(message) + \
-                               ', ти сьогодні добряче попрацював руками та отримав ' \
-                               'свої ' + str(size - size_last) + ' cм. ' \
-                               'Тепер твій байрактар ' + str(
-                            size) + ' см. Продовжуй сумлінно працювати!'
-                        send_message_to_group(text)
-                    elif size < size_last:
-                        text = GetTextWithLink(message) + ', сьогодні папуга віддзьобала ' + str(
-                            size_last - size) + ' cм твого ' \
-                                                'причандала. ' \
-                                                'Тепер твій байрактар ' + str(
-                            size) + ' см. ЗСУ помстить найближчим часом!'
-                        send_message_to_group(text)
-                    elif size == size_last:
-                        text = GetTextWithLink(message) + ', твій хєр мов камінь. Не зрушився ні на см і ' \
-                                                          'складає ' + str(size) + ' см.'
-                        send_message_to_group(text)
+                    db.commit()
+                except:
+                    pass
 
-        else:
-            now = datetime.datetime.now()
-            size = str(random.randint(1, 12))
-
-            date_time_stop = str(now + timedelta(hours=12))
-            date_time_stop = date_time_stop[:19]
-
-            send_message_to_group("Привіт, " + GetTextWithLink(message) +
-                                  ", ти тільки-но зайшов(-ла) у режим, "
-                                  "де справжні хлопці та дівцата міряються своєю зброєю."
-                                  )
-
-            send_message_to_group(GetTextWithLink(message) + ", твій байрактар : " + size + " см")
-            try:
-                sql = "INSERT INTO Users (user_id,size,stop_timer) VALUES (%s, %s,%s)"
-                val = (user_id, size, date_time_stop)
-                mycursor.execute(sql, val)
-
-                mydb.commit()
-            except:
-                # print("Ты уже есть в базе")
-                pass
-
-        mydb.commit()
-        mycursor.close()
-        mydb.close()
-    except Exception as e:
-        # print(e)
-        send_message_to_group("Упс, щось пішло не так...")
+            db.commit()
+            cursor.close()
+            db.close()
+        except:
+            send_message_to_group("Упс, щось пішло не так...\n"
+                                  "(upgrade)")
+    else:
+        bot.send_message(message.chat.id, "Ця команда працює лише у груповому чаті.")
 
 
 @bot.message_handler(commands=['iwannadie'])
-def send_top_users(message):
-    try:
-        user_id = message.from_user.id
-        # print(user_id)
-        user_name_surname = str(message.from_user.first_name) + " " + str(message.from_user.last_name)
+def iwannadie(message):
+    if message.chat.id == GROUP_ID:
+        try:
+            user_id = message.from_user.id
 
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+            res = db_connect()
+            cursor = res[1]
+            db = res[0]
 
-        query = "SELECT * FROM Users WHERE user_id = %s"
-        mycursor.execute(query, (user_id,))
-        row = mycursor.fetchone()
-        if row:
-            # Тут stop_timer_qt и stop_timer уже по типу данных - даты, а не строки
-            user_id, size_last, start_timer_qt, stop_timer_last, totem, passmountain_last, stop_timer_mountain_last = row
+            query = "SELECT * FROM Users WHERE user_id = %s"
+            cursor.execute(query, (user_id,))
+            row = cursor.fetchone()
+            if row:
+                # Тут stop_timer_qt и stop_timer уже по типу данных - даты, а не строки
+                user_id, size_last, start_timer_qt, stop_timer_last, totem, passmountain_last, stop_timer_mountain_last = row
 
-            if passmountain_last == None:
+                if passmountain_last is None:
+                    now = datetime.datetime.now()
+
+                    passmountain = str(random.randint(1, 12))
+
+                    date_time_stop = str(now + timedelta(hours=12))[:19]
+                    # date_time_stop = date_time_stop[:19]
+
+                    send_message_to_group(
+                        "Привіт, " + get_text_with_link(message) +
+                        ", я Папуга 3.0, ти тільки-но зайшов(-ла) у режим, "
+                        "де справжні скелелази-самогубці намагаються подолати гору Еверест."
+                    )
+
+                    send_message_to_group(get_text_with_link(message) + " ти подолав гору на : " + passmountain + " м")
+                    try:
+                        query = "UPDATE Users SET passmountain = %s, stop_timer_mountain = %s WHERE user_id = %s"
+                        values = (passmountain, date_time_stop, user_id)
+                        cursor.execute(query, values)
+
+                        db.commit()
+                    except:
+                        pass
+
+                else:
+                    status = check_timer(message, user_id, passmountain_last, stop_timer_mountain_last, 2)
+
+                    data_arr = get_data_from_table(user_id)
+                    passmountain = data_arr[5]
+                    if len(str(status)) > 15:
+                        send_message_to_group(status)
+
+                    if status == 20:
+                        if passmountain >= 0:
+                            send_message_to_group(mountain_phrases(message, passmountain, passmountain_last))
+
+                        elif passmountain < 0:
+                            send_message_to_group(mine_phrases(message, passmountain, passmountain_last))
+
+            else:
                 now = datetime.datetime.now()
-
                 passmountain = str(random.randint(1, 12))
 
-                date_time_stop = str(now + timedelta(hours=12))
-                date_time_stop = date_time_stop[:19]
+                date_time_stop = str(now + timedelta(hours=12))[:19]
+                # date_time_stop = date_time_stop[:19]
 
                 send_message_to_group(
-                    "Привіт, " + GetTextWithLink(message) +
+                    "Привіт, " + get_text_with_link(message) +
                     ", я Папуга 3.0, ти тільки-но зайшов(-ла) у режим, "
                     "де справжні скелелази-самогубці намагаються подолати гору Еверест."
                 )
-
-                send_message_to_group(GetTextWithLink(message) + " ти подолав гору на : " + passmountain + " м")
+                send_message_to_group(get_text_with_link(message) + " ти подолав гору на : " + passmountain + " м")
                 try:
-                    query = "UPDATE Users SET passmountain = %s, stop_timer_mountain = %s WHERE user_id = %s"
-                    values = (passmountain, date_time_stop, user_id)
-                    mycursor.execute(query, values)
+                    sql = "INSERT INTO Users (user_id,passmountain,stop_timer_mountain) VALUES (%s, %s,%s)"
+                    val = (user_id, passmountain, date_time_stop)
+                    cursor.execute(sql, val)
 
-                    mydb.commit()
+                    db.commit()
                 except:
-                    # print("Ты уже есть в базе")
                     pass
-            else:
-                status = CheckTimer(message, user_id, passmountain_last, stop_timer_mountain_last, 2)
 
-                data_arr = GetDataFromTable(user_id)
-                passmountain = data_arr[5]
-                if len(str(status)) > 15:
-                    send_message_to_group(status)
-
-                if status == 20:
-                    if passmountain >= 0:
-                        send_message_to_group(MountainPhrases(message, passmountain, passmountain_last))
-
-                    elif passmountain < 0:
-                        send_message_to_group(MinePhrases(message, passmountain, passmountain_last))
-
-        else:
-            now = datetime.datetime.now()
-            passmountain = str(random.randint(1, 12))
-
-            date_time_stop = str(now + timedelta(hours=12))
-            date_time_stop = date_time_stop[:19]
-
-            send_message_to_group(
-                "Привіт, " + GetTextWithLink(message) +
-                ", я Папуга 3.0, ти тільки-но зайшов(-ла) у режим, "
-                "де справжні скелелази-самогубці намагаються подолати гору Еверест."
-            )
-            send_message_to_group(GetTextWithLink(message) + " ти подолав гору на : " + passmountain + " м")
-            try:
-                sql = "INSERT INTO Users (user_id,passmountain,stop_timer_mountain) VALUES (%s, %s,%s)"
-                val = (user_id, passmountain, date_time_stop)
-                mycursor.execute(sql, val)
-
-                mydb.commit()
-            except:
-                # print("Ты уже есть в базе")
-                pass
-
-        mydb.commit()
-        mycursor.close()
-        mydb.close()
-    except:
-        send_message_to_group("Упс, щось пішло не так...")
+            db.commit()
+            cursor.close()
+            db.close()
+        except:
+            send_message_to_group("Упс, щось пішло не так...")
+    else:
+        bot.send_message(message.chat.id, "Ця команда працює лише у груповому чаті.")
 
 
 @bot.message_handler(commands=['top'])
-def send_top_users(message):
-    try:
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+def top(message):
+    if message.chat.id == GROUP_ID:
+        try:
+            res = db_connect()
+            mycursor = res[1]
+            mydb = res[0]
 
-        mycursor.execute("SELECT user_id, size FROM Users ORDER BY size DESC LIMIT 5")
-        mydb.commit()
-        top_users = mycursor.fetchall()
+            mycursor.execute("SELECT user_id, size FROM Users ORDER BY size DESC LIMIT 5")
+            mydb.commit()
+            top_users = mycursor.fetchall()
 
-        # Format top users as string
-        top_users_str = "TОП 5 БАЙРАКТАРІВ ЧАТУ:\n\n"
-        for i, user in enumerate(top_users):
-            top_users_str += f"{i + 1}. {GetTextWithLinkForTop5(user[0])} -> {user[1]} см\n"
+            # Format top users as string
+            top_users_str = "TОП 5 БАЙРАКТАРІВ ЧАТУ:\n\n"
+            for i, user in enumerate(top_users):
+                top_users_str += f"{i + 1}. {get_text_with_link_for_top5(user[0])} -> {user[1]} см\n"
 
-        send_message_to_group(top_users_str)
+            send_message_to_group(top_users_str)
 
-        mycursor.close()
-        mydb.close()
-    except:
-        send_message_to_group("Упс, щось пішло не так...")
+            mycursor.close()
+            mydb.close()
+        except:
+            send_message_to_group("Упс, щось пішло не так...")
+    else:
+        bot.send_message(message.chat.id, "Ця команда працює лише у груповому чаті.")
 
 
 @bot.message_handler(commands=['topm'])
-def send_top_users(message):
-    try:
-        # Retrieve top 5 users from MySQL database
-        res = DBConnect()
-        mycursor = res[1]
-        mydb = res[0]
+def top_mountain(message):
+    if message.chat.id == GROUP_ID:
+        try:
+            # Retrieve top 5 users from MySQL database
+            res = db_connect()
+            mycursor = res[1]
+            mydb = res[0]
 
-        mycursor.execute(
-            "SELECT user_id, passmountain FROM Users WHERE passmountain >= 0 ORDER BY passmountain DESC LIMIT 5")
-        mydb.commit()
-        top_users = mycursor.fetchall()
+            mycursor.execute(
+                "SELECT user_id, passmountain FROM Users WHERE passmountain >= 0 ORDER BY passmountain DESC LIMIT 5")
+            mydb.commit()
+            top_users = mycursor.fetchall()
 
-        # Format top users as string
-        top_users_str = "TОП 5 \U000026F0СКЕЛЕЛАЗІВ ЧАТУ:\n\n"
-        for i, user in enumerate(top_users):
-            top_users_str += f"{i + 1}. {GetTextWithLinkForTop5(user[0])} >> {user[1]} м ^\n"
+            # Format top users as string
+            top_users_str = "TОП 5 \U000026F0СКЕЛЕЛАЗІВ ЧАТУ:\n\n"
+            for i, user in enumerate(top_users):
+                top_users_str += f"{i + 1}. {get_text_with_link_for_top5(user[0])} >> {user[1]} м ^\n"
 
-        mycursor.execute("SELECT user_id, passmountain FROM Users WHERE passmountain < 0 ORDER BY passmountain LIMIT 5")
-        mydb.commit()
-        top_negative_users = mycursor.fetchall()
+            mycursor.execute("SELECT user_id, passmountain FROM Users WHERE passmountain < 0 ORDER BY passmountain LIMIT 5")
+            mydb.commit()
+            top_negative_users = mycursor.fetchall()
 
-        # Format top negative users as string and append to top_users_str
-        top_users_str += "\n\nТОП 5 \U000026CFШАХТАРІВ ЧАТУ :\n\n"
-        for i, user in enumerate(top_negative_users):
-            top_users_str += f"{i + 1}. {GetTextWithLinkForTop5(user[0])} >> {user[1]} м ^(-1)\n"
+            # Format top negative users as string and append to top_users_str
+            tmp_arr_str = []
+            top_users_str += "\n\nТОП 5 \U000026CFШАХТАРІВ ЧАТУ :\n\n"
+            for i, user in enumerate(top_negative_users):
+                tmp_arr_str.append(f"{i + 1}. {get_text_with_link_for_top5(user[0])} >> {user[1]} м ^(-1)\n")
+                # top_users_str += f"{i + 1}. {GetTextWithLinkForTop5(user[0])} >> {user[1]} м ^(-1)\n"
+            for i in reversed(tmp_arr_str):
+                top_users_str += i
+            # Send top users to Telegram group
+            send_message_to_group(top_users_str)
 
-        # Send top users to Telegram group
-        send_message_to_group(top_users_str)
+            mycursor.close()
+            mydb.close()
+        except :
+            send_message_to_group("Упс, щось пішло не так...")
+    else:
+        bot.send_message(message.chat.id, "Ця команда працює лише у груповому чаті.")
 
-        mycursor.close()
-        mydb.close()
-    except Exception as e:
-        # print(e)
-        send_message_to_group("Упс, щось пішло не так...")
 
 
 @bot.message_handler(content_types=['text', 'photo', 'video', 'document',
